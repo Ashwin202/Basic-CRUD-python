@@ -61,6 +61,7 @@ def update():
         updaterField = request.args.get('updater')
         users_collection = db[os.getenv('USER_COLLECTION')]
         if updaterField == 'username':
+            new_username = data['username']
             users_collection.update_one({"agent_id": updateKey}, {"$set": {"username": new_username}})
         else:
             new_password = data['password']
