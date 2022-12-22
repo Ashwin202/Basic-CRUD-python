@@ -1,4 +1,6 @@
 from flask import Flask,jsonify, render_template, request,make_response
+from function import generateToken,decode_jwt,hash_password
+from loguru import logger
 import pymongo
 import json
 import jwt
@@ -11,10 +13,6 @@ client = pymongo.MongoClient('mongodb://localhost:27017/')
 db = client[os.getenv('DATABASE')]
 app = Flask(__name__)
 
-def hash_password(password):
-    password = str(password)
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode('utf-8'), salt)
 
 @app.route('/login',methods=['GET'])
 def login():
@@ -44,6 +42,9 @@ def register():
         password = data['password']
         hashedPassword = hash_password(password)
         agent_id = data['agent_id']
+        token = generateToken(app,{"agent_id":agent_id})  
+        logger.info("Token Generated")
+        logger.info(f"token:{token}")
         users_collection = db[os.getenv('USER_COLLECTION')]
         new_user={'username':username,'password':hashedPassword,'agent_id':agent_id}
         users_collection.insert_one(new_user)
@@ -57,15 +58,24 @@ def register():
 def update():
     try:
         data = request.get_json()
+        data = request.get_json()
         updateKey = request.args.get('id')
         updaterField = request.args.get('updater')
+        token = request.headers.get("Authorization")
+        authenticatedUser = (decode_jwt(token,os.getenv('SECRET')))["agent_id"]
+        if(str(authenticatedUser)!=updateKey):
+            response = {'message': 'User not authenticated'}
+            return make_response(jsonify(response), 400)
+        
         users_collection = db[os.getenv('USER_COLLECTION')]
+        print(list(users_collection.find()))
         if updaterField == 'username':
             new_username = data['username']
             users_collection.update_one({"agent_id": updateKey}, {"$set": {"username": new_username}})
         else:
             new_password = data['password']
             users_collection.update_one({"agent_id": updateKey}, {"$set": {"password": new_password}})
+        
         response = {'message': 'User details updated successfully'}
         return make_response(jsonify(response), 200)
     except:
@@ -83,10 +93,33 @@ def delete():
     except:
         response = {'message': 'User not deleted'}
         return make_response(jsonify(response), 400)
+
+@app.route('/listUser',methods=['GET'])
+def listUser():
+    try:
+        updateKey = request.args.get('id')
+        
+        users_collection = db[os.getenv('USER_COLLECTION')]
+        # print(list(users_collection.find()))
+        users = list(users_collection.find())
+        token = request.headers.get("Authorization")
+        authenticatedUser = (decode_jwt(token,os.getenv('SECRET')))["agent_id"]
+        for user in users:
+            user['_id'] = str(user['_id'])
+        print(users)
+        if(str(authenticatedUser)!=updateKey):
+            response = {'message': 'User not authenticated'}
+            return make_response(jsonify(response), 400)
+        response = {'message': 'User details updated successfully'}
+        return make_response(jsonify(response), 200)
+    except:
+        response = {'message': 'Cannot list details'}
+        return make_response(jsonify(response), 400)
         
 
 if __name__=="__main__":
     app.run(host='0.0.0.0',port=os.getenv('PORT'), debug=True)
+    logger.debug(f"Flask app started at port:{os.getenv('PORT')}")
 
 
 
